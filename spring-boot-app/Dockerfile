@@ -3,7 +3,7 @@
 FROM adoptopenjdk/openjdk11:alpine-jre
 
 # Simply the artifact path
-ARG artifact=/var/lib/jenkins/workspace/jala-cicd/spring-boot-app/target/spring-boot-web.jar
+ARG artifact=spring-boot-app/target/spring-boot-web.jar
 
 WORKDIR /opt/app
 
