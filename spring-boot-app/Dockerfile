@@ -5,7 +5,7 @@ FROM adoptopenjdk/openjdk11:alpine-jre
 WORKDIR /app
 
 # Copy the JAR file from the project's target directory to the container
-COPY target/spring-boot-web.jar app.jar
+COPY target/spring-boot-web.jar app/app.jar
 
 # Define the command to run your Java application
 ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -jar app.jar"]
