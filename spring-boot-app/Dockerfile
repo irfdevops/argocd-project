@@ -8,4 +8,4 @@ WORKDIR /app
 COPY target/spring-boot-web.jar app.jar
 
 # Define the command to run your Java application
-CMD ["java", "-jar", "app.jar"]
+ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -jar app.jar"]
