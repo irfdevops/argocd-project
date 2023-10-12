@@ -1,11 +1,13 @@
-# Use a minimal base image with Java
+# You can change this base image to anything else
+# But make sure to use the correct version of Java
 FROM adoptopenjdk/openjdk11:alpine-jre
 
-# Set the working directory in the container
-WORKDIR /app
+# Simply the artifact path
+ARG artifact=/var/lib/jenkins/workspace/jala-cicd/spring-boot-app/target/spring-boot-web.jar
 
-# Copy the JAR file from the project's target directory to the container
-COPY target/spring-boot-web.jar app/app.jar
+WORKDIR /opt/app
 
-# Define the command to run your Java application
-ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -jar app.jar"]
+COPY ${artifact} app.jar
+
+# This should not be changed
+ENTRYPOINT ["java","-jar","app.jar"]
