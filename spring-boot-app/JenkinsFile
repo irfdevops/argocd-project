@@ -1,0 +1,67 @@
+parameters {
+    string(name: 'ECR_REPOSITORY', defaultValue: '', description: 'Name of the ECR repository')
+}
+
+pipeline {
+  agent any
+  
+  tools {
+        // Define the Maven tool installation
+    maven 'maven'
+  }
+  
+  stages {
+    stage('Cloning Git') {
+       steps {
+         checkout([$class: 'GitSCM', branches: [[name: '*/main']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '', url: 'https://github.com/aamerkhan07/cicd-jala.git/']]])     
+            }
+        }
+    stage('Build and Test') {
+      steps {
+        sh 'ls -ltr'
+        // build the project and create a JAR file
+        sh 'cd spring-boot-app && mvn clean package'
+      }
+    }
+
+    stage('Create ECR Repository') {
+        steps {
+            script {
+                def awsRegion = 'us-east-1'
+                def ecrRepository = params.ECR_REPOSITORY
+
+                    if (ecrRepository) {
+                        // Create ECR repository using AWS CLI
+                        sh "aws ecr create-repository --repository-name $ecrRepository --region $awsRegion"
+                    } else {
+                        error 'ECR Repository name parameter is required.'
+                    }
+                }
+            }
+        }
+        stage('Build and Push Docker Image to ECR') {
+            steps {
+                script {
+                    def awsRegion = 'us-east-1'
+                    def ecrRepository = params.ECR_REPOSITORY
+                    def dockerImageTag = 'v$BUILDVERSION'
+
+                    // Build and tag the Docker image
+                    sh "docker build -t $ecrRepository:$dockerImageTag ."
+
+                    // Configure Docker login for ECR
+                    withCredentials([usernamePassword(credentialsId: 'aws-ecr-credentials', passwordVariable: 'AWS_PASSWORD', usernameVariable: 'AWS_USERNAME')]) {
+                        sh "docker login -u $AWS_USERNAME -p $AWS_PASSWORD $awsRegion.amazonaws.com"
+                    }
+
+                    // Tag the Docker image with ECR repository URL
+                    sh "docker tag $ecrRepository:$dockerImageTag $awsRegion.amazonaws.com/$ecrRepository:$dockerImageTag"
+
+                    // Push the Docker image to ECR
+                    sh "docker push $awsRegion.amazonaws.com/$ecrRepository:$dockerImageTag"
+                }
+            }
+        }
+
+  }
+}

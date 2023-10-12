@@ -1,0 +1,11 @@
+# Use a minimal base image with Java
+FROM adoptopenjdk/openjdk11:alpine-jre
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Copy the JAR file from the project's target directory to the container
+COPY target/*.jar app.jar
+
+# Define the command to run your Java application
+CMD ["java", "-jar", "app.jar"]
