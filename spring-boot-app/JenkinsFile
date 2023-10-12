@@ -3,65 +3,116 @@ parameters {
 }
 
 pipeline {
-  agent any
-  
-  tools {
-        // Define the Maven tool installation
-    maven 'maven'
-  }
-  
-  stages {
-    stage('Cloning Git') {
-       steps {
-         checkout([$class: 'GitSCM', branches: [[name: '*/main']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '', url: 'https://github.com/aamerkhan07/cicd-jala.git/']]])     
-            }
-        }
-    stage('Build and Test') {
-      steps {
-        sh 'ls -ltr'
-        // build the project and create a JAR file
-        sh 'cd spring-boot-app && mvn clean package'
-      }
+    agent any
+    environment {
+        AWS_ACCOUNT_ID="432624721970"
+        AWS_DEFAULT_REGION="us-east-1"
+        IMAGE_REPO_NAME="jala-ecr-repo"
+        IMAGE_TAG="latest"
+        REPOSITORY_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${IMAGE_REPO_NAME}"
     }
-
-    stage('Create ECR Repository') {
-        steps {
-            script {
-                def awsRegion = 'us-east-1'
-                def ecrRepository = params.ECR_REPOSITORY
-
-                    if (ecrRepository) {
-                        // Create ECR repository using AWS CLI
-                        sh "aws ecr create-repository --repository-name $ecrRepository --region $awsRegion"
-                    } else {
-                        error 'ECR Repository name parameter is required.'
-                    }
+    tools {
+        // Define the Maven tool installation
+        maven 'maven'
+    }
+    stages {
+        
+         stage('Logging into AWS ECR') {
+            steps {
+                script {
+                sh "aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
                 }
+                 
+            }
+         }
+        
+        stage('Cloning Git') {
+            steps {
+                checkout([$class: 'GitSCM', branches: [[name: '*/main']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '', url: 'https://github.com/Hussain147/argocd-project.git/']]])     
             }
         }
-        stage('Build and Push Docker Image to ECR') {
+        
+        stage('Build and Test') {
+            steps {
+                sh 'ls -ltr'
+                // build the project and create a JAR file
+                sh 'cd spring-boot-app && mvn clean package'
+            }
+        }
+        
+        stage('Check ECR Repository Existence') {
             steps {
                 script {
                     def awsRegion = 'us-east-1'
                     def ecrRepository = params.ECR_REPOSITORY
-                    def dockerImageTag = 'v$BUILDVERSION'
 
-                    // Build and tag the Docker image
-                    sh "docker build -t $ecrRepository:$dockerImageTag ."
+                    def ecrRepositoryExists = sh(
+                        script: "aws ecr describe-repositories --repository-names $ecrRepository --region $awsRegion",
+                        returnStatus: true
+                    )
 
-                    // Configure Docker login for ECR
-                    withCredentials([usernamePassword(credentialsId: 'aws-ecr-credentials', passwordVariable: 'AWS_PASSWORD', usernameVariable: 'AWS_USERNAME')]) {
-                        sh "docker login -u $AWS_USERNAME -p $AWS_PASSWORD $awsRegion.amazonaws.com"
-                    }
-
-                    // Tag the Docker image with ECR repository URL
-                    sh "docker tag $ecrRepository:$dockerImageTag $awsRegion.amazonaws.com/$ecrRepository:$dockerImageTag"
-
-                    // Push the Docker image to ECR
-                    sh "docker push $awsRegion.amazonaws.com/$ecrRepository:$dockerImageTag"
+                    if (ecrRepositoryExists == 0) {
+                        echo "ECR Repository $ecrRepository already exists. Skipping ECR repository creation."
+                        currentBuild.result = 'SUCCESS'  // Mark the build as successful
                 }
             }
         }
+    }
+    
+        stage('Create ECR Repository') {
+            when {
+                expression { currentBuild.resultIsBetterOrEqualTo('FAILURE') && !params.ECR_REPOSITORY.isEmpty() }  // Skip if the previous stage marked the build as SUCCESS or if ECR_REPOSITORY is empty
+            }
+            steps {
+                script {
+                    def awsRegion = 'us-east-1'
+                    def ecrRepository = params.ECR_REPOSITORY
 
-  }
+                    // Check if the repository already exists
+                    def repoExists = sh(script: "aws ecr describe-repositories --repository-names $ecrRepository --region $awsRegion", returnStatus: true) == 0
+
+                    if (!repoExists) {
+                        echo "ECR Repository $ecrRepository does not exist. Creating it..."
+                        // Create ECR repository using AWS CLI
+                        def createResult = sh(script: "aws ecr create-repository --repository-name $ecrRepository --region $awsRegion", returnStatus: true)
+
+                        if (createResult == 0) {
+                            echo "ECR Repository $ecrRepository created successfully."
+                        } else {
+                            error "Failed to create ECR Repository $ecrRepository."
+                        }
+                        } else {
+                            echo "ECR Repository $ecrRepository already exists. Skipping ECR repository creation."
+                        }
+                    }
+                }
+        }
+  
+        stage('Building image') {
+            steps{
+                script {
+                    sh "pwd"
+                    sh "cd spring-boot-app && pwd"
+                    sh "ls -ltr"
+                    def ecrRepository = params.ECR_REPOSITORY
+	                def ecrRepo = "test"
+                    def dockerImageTag = "latest"
+                    
+
+            // Build and tag the Docker image
+                    sh "docker build -t $ecrRepository:$dockerImageTag . -f /var/lib/jenkins/workspace/jala-cicd/spring-boot-app/Dockerfile"
+                }
+            }
+        }
+   
+    // Uploading Docker images into AWS ECR
+        stage('Pushing to ECR') {
+            steps{  
+                script {
+                    sh "docker tag ${IMAGE_REPO_NAME}:${IMAGE_TAG} ${REPOSITORY_URI}:$IMAGE_TAG"
+                    sh "docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${IMAGE_REPO_NAME}:${IMAGE_TAG}"
+                }
+            }
+        }
+    }
 }
