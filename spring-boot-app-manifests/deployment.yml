@@ -16,6 +16,6 @@ spec:
     spec:
       containers:
       - name: spring-boot-app
-        image: 432624721970.dkr.ecr.us-east-1.amazonaws.com/jala-ecr-repo:v62
+        image: 432624721970.dkr.ecr.us-east-1.amazonaws.com/jala-ecr-repo:v63
         ports:
         - containerPort: 8080
