@@ -16,6 +16,6 @@ spec:
     spec:
       containers:
       - name: spring-boot-app
-        image: jala-ecr-repo:replaceImageTag
+        image: jala-ecr-repo:latest
         ports:
         - containerPort: 8080
