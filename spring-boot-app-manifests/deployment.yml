@@ -14,10 +14,10 @@ spec:
       labels:
         app: spring-boot-app
     spec:
+      imagePullSecrets:
+      - name: regcred  # Add this line to reference the 'regcred' secret
       containers:
       - name: spring-boot-app
         image: 432624721970.dkr.ecr.us-east-1.amazonaws.com/jala-ecr-repo:v3
         ports:
         - containerPort: 8080
-      imagePullSecrets:
-      - name: regcred  # Add this line to reference the 'regcred' secret
