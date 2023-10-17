@@ -19,3 +19,5 @@ spec:
         image: 432624721970.dkr.ecr.us-east-1.amazonaws.com/jala-ecr-repo:v3
         ports:
         - containerPort: 8080
+      imagePullSecrets:
+      - name: regcred  # Add this line to reference the 'regcred' secret
