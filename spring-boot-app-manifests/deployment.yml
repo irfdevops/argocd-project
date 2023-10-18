@@ -18,6 +18,6 @@ spec:
       - name: regcred  # Add this line to reference the 'regcred' secret
       containers:
       - name: spring-boot-app
-        image: techie-web:v1
+        image: kubehussain/techie-web:v1
         ports:
         - containerPort: 8080
