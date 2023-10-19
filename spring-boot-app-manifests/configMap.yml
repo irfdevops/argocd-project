@@ -1,6 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: app-config
-data:
-  image: "432624721970.dkr.ecr.us-east-1.amazonaws.com/techie:v8"
