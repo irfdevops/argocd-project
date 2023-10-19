@@ -18,6 +18,12 @@ spec:
       - name: regcred  # Add this line to reference the 'regcred' secret
       containers:
       - name: spring-boot-app
-        image: 432624721970.dkr.ecr.us-east-1.amazonaws.com/techie:v9
+        image: $(IMAGE)
         ports:
         - containerPort: 8080
+        env:
+        - name: IMAGE
+          valueFrom:
+            configMapKeyRef:
+              name: spring-boot-app-config
+              key: IMAGE
