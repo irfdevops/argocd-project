@@ -18,7 +18,7 @@ spec:
       - name: regcred  # Add this line to reference the 'regcred' secret
       containers:
       - name: spring-boot-app
-        image: $(IMAGE)
+        image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
         ports:
         - containerPort: 8080
         env:
