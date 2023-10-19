@@ -25,5 +25,5 @@ spec:
         - name: IMAGE
           valueFrom:
             configMapKeyRef:
-              name: spring-boot-app-config
+              name: app-config
               key: IMAGE
