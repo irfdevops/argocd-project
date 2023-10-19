@@ -7,8 +7,8 @@ pipeline {
     environment {
         AWS_ACCOUNT_ID="432624721970"
         AWS_DEFAULT_REGION="us-east-1"
-       // IMAGE_REPO_NAME="jala-ecr-repo"
-        dockerImageTag="latest"
+        BUILD_NUMBER = "${currentBuild.number}"
+        dockerImageVersion = "v${BUILD_NUMBER}"
         REPOSITORY_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
     }
     tools {
@@ -17,7 +17,84 @@ pipeline {
     }
     stages {
         
-         stage('Logging into AWS ECR') {
+        stage('Cloning Git') {
+            steps {
+                checkout([$class: 'GitSCM', branches: [[name: '*/main']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '', url: 'https://github.com/Hussain147/argocd-project.git/']]])     
+            }
+        }
+        
+        stage('Build Artifact') {
+            steps {
+                sh 'ls -ltr'
+                // build the project and create a JAR file
+                sh 'cd spring-boot-app && mvn clean package'
+            }
+            post {
+                success {
+                    echo "Now Archiving."
+                    archiveArtifacts artifacts: '**/*.jar'
+                }
+            }
+        }
+        
+        stage('Test'){
+            steps {
+                sh 'cd spring-boot-app && mvn test'
+            }
+
+        }
+        
+        stage ('CODE ANALYSIS WITH CHECKSTYLE'){
+            steps {
+                sh 'cd spring-boot-app && mvn checkstyle:checkstyle -DskipTests'
+            }
+            post {
+                success {
+                    echo 'Generated Analysis Result'
+                }
+            }
+        }
+        stage('Sonar Analysis') {
+            environment {
+                scannerHome = tool 'sonar4.7'
+            }
+
+            steps {
+               withSonarQubeEnv('sonar') {
+                   sh '''${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=techie \
+                   -Dsonar.projectName=techie-web \
+                   -Dsonar.projectVersion=1.0 \
+                   -Dsonar.sources=spring-boot-app/src/ \
+                   -Dsonar.java.binaries=spring-boot-app/target/classes/com/hussain/ \
+                   -Dsonar.junit.reportsPath=spring-boot-app/target/surefire-reports/ \
+                   -Dsonar.jacoco.reportsPath=spring-boot-app/target/jacoco.exec \
+                   -Dsonar.java.checkstyle.reportPaths=spring-boot-app/target/checkstyle-result.xml'''
+                    }
+                }
+        }
+
+        stage('Upload Artifact To Nexus'){
+            steps{
+                nexusArtifactUploader(
+                  nexusVersion: 'nexus3',
+                  protocol: 'http',
+                  nexusUrl: '172.31.28.95:8081',
+                  groupId: 'Dev',
+                  version: "v${env.BUILD_ID}",
+                  repository: 'techie-repo',
+                  credentialsId: 'nexus_login',
+                  artifacts: [
+                    [artifactId: 'techie-web',
+                     classifier: '',
+                     file: 'spring-boot-app/target/spring-boot-web.jar',
+                     type: 'jar']
+                ]
+            )
+            }
+        }
+        
+        
+        stage('Logging into AWS ECR') {
             steps {
                 script {
                 sh "aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
@@ -25,21 +102,7 @@ pipeline {
                  
             }
          }
-        
-        stage('Cloning Git') {
-            steps {
-                checkout([$class: 'GitSCM', branches: [[name: '*/main']], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[credentialsId: '', url: 'https://github.com/Hussain147/argocd-project.git/']]])     
-            }
-        }
-        
-        stage('Build and Test') {
-            steps {
-                sh 'ls -ltr'
-                // build the project and create a JAR file
-                sh 'cd spring-boot-app && mvn clean package'
-            }
-        }
-        
+         
         stage('Check ECR Repository Existence') {
             steps {
                 script {
@@ -89,6 +152,7 @@ pipeline {
         }
   
         stage('Building image') {
+
             steps{
                 script {
                     sh "pwd"
@@ -96,7 +160,7 @@ pipeline {
                     sh "ls -ltr"
                     def ecrRepository = params.ECR_REPOSITORY
             // Build and tag the Docker image
-                    sh "docker build -t $ecrRepository:$dockerImageTag . -f /var/lib/jenkins/workspace/jala-cicd/spring-boot-app/Dockerfile"
+                    sh "docker build -t $ecrRepository:$dockerImageVersion . -f /var/lib/jenkins/workspace/techie-cicd/spring-boot-app/Dockerfile"
                 }
             }
         }
@@ -107,10 +171,48 @@ pipeline {
                 script {
                     def ecrRepository = params.ECR_REPOSITORY
                    
-                    sh "docker tag $ecrRepository:$dockerImageTag ${REPOSITORY_URI}/$ecrRepository:${dockerImageTag}"
-                    sh "docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/$ecrRepository:${dockerImageTag}"
+                    sh "docker tag $ecrRepository:$dockerImageVersion ${REPOSITORY_URI}/$ecrRepository:${dockerImageVersion}"
+                    sh "docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/$ecrRepository:${dockerImageVersion}"
+                }
+            }
+        }
+        
+        stage('GitOps Enabler to update deployment manifest') {
+            environment {
+                GIT_REPO_NAME = "argocd-project"
+                GIT_USER_NAME = "hussain147"
+                GIT_USER_EMAIL = "hussainashrafi406@gmail.com"
+
+            
+        }
+            steps {
+                withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
+                    script {
+
+                // Specify the target directory for the clone
+                        def cloneDirectory = "argocd-project"
+
+                // Remove the existing directory if it exists
+                        sh "rm -rf ${cloneDirectory}"
+
+                // Clone the repository
+                        sh "git clone https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} ${cloneDirectory}"
+                        dir("${cloneDirectory}/spring-boot-app-manifests") {
+                    // Fetch the current Deployment YAML
+                            sh "wget https://raw.githubusercontent.com/${GIT_USER_NAME}/${GIT_REPO_NAME}/main/spring-boot-app-manifests/deployment.yml"
+
+                    // Modify the image tag in the Deployment YAML
+                            sh "sed -i 's|image: 432624721970.dkr.ecr.us-east-1.amazonaws.com/techie:.*|image: 432624721970.dkr.ecr.us-east-1.amazonaws.com/techie:${dockerImageVersion}|g' deployment.yml"
+
+                    // Add, commit, and push the changes
+                            sh "git add deployment.yml"
+                            sh "git commit -m 'Updated deployment image to version ${dockerImageVersion}'"
+                            sh "git push origin main"
                 }
             }
         }
     }
+    }
+    }
 }
+        
