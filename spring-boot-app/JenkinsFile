@@ -1,14 +1,21 @@
 parameters {
     string(name: 'ECR_REPOSITORY', defaultValue: '', description: 'Name of the ECR repository')
 }
-
+def COLOR_MAP = [
+    'SUCCESS': 'good', 
+    'FAILURE': 'danger',
+]
 pipeline {
     agent any
     environment {
         AWS_ACCOUNT_ID="432624721970"
         AWS_DEFAULT_REGION="us-east-1"
+       // IMAGE_REPO_NAME="jala-ecr-repo"
         BUILD_NUMBER = "${currentBuild.number}"
         dockerImageVersion = "v${BUILD_NUMBER}"
+        
+        
+        
         REPOSITORY_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
     }
     tools {
@@ -54,44 +61,44 @@ pipeline {
                 }
             }
         }
-        stage('Sonar Analysis') {
-            environment {
-                scannerHome = tool 'sonar4.7'
-            }
+        // stage('Sonar Analysis') {
+        //     environment {
+        //         scannerHome = tool 'sonar4.7'
+        //     }
 
-            steps {
-               withSonarQubeEnv('sonar') {
-                   sh '''${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=techie \
-                   -Dsonar.projectName=techie-web \
-                   -Dsonar.projectVersion=1.0 \
-                   -Dsonar.sources=spring-boot-app/src/ \
-                   -Dsonar.java.binaries=spring-boot-app/target/classes/com/hussain/ \
-                   -Dsonar.junit.reportsPath=spring-boot-app/target/surefire-reports/ \
-                   -Dsonar.jacoco.reportsPath=spring-boot-app/target/jacoco.exec \
-                   -Dsonar.java.checkstyle.reportPaths=spring-boot-app/target/checkstyle-result.xml'''
-                    }
-                }
-        }
+        //     steps {
+        //       withSonarQubeEnv('sonar') {
+        //           sh '''${scannerHome}/bin/sonar-scanner -Dsonar.projectKey=techie \
+        //           -Dsonar.projectName=techie-web \
+        //           -Dsonar.projectVersion=1.0 \
+        //           -Dsonar.sources=spring-boot-app/src/ \
+        //           -Dsonar.java.binaries=spring-boot-app/target/classes/com/hussain/ \
+        //           -Dsonar.junit.reportsPath=spring-boot-app/target/surefire-reports/ \
+        //           -Dsonar.jacoco.reportsPath=spring-boot-app/target/jacoco.exec \
+        //           -Dsonar.java.checkstyle.reportPaths=spring-boot-app/target/checkstyle-result.xml'''
+        //             }
+        //         }
+        // }
 
-        stage('Upload Artifact To Nexus'){
-            steps{
-                nexusArtifactUploader(
-                  nexusVersion: 'nexus3',
-                  protocol: 'http',
-                  nexusUrl: '172.31.28.95:8081',
-                  groupId: 'Dev',
-                  version: "v${env.BUILD_ID}",
-                  repository: 'techie-repo',
-                  credentialsId: 'nexus_login',
-                  artifacts: [
-                    [artifactId: 'techie-web',
-                     classifier: '',
-                     file: 'spring-boot-app/target/spring-boot-web.jar',
-                     type: 'jar']
-                ]
-            )
-            }
-        }
+        // stage('Upload Artifact To Nexus'){
+        //     steps{
+        //         nexusArtifactUploader(
+        //           nexusVersion: 'nexus3',
+        //           protocol: 'http',
+        //           nexusUrl: '172.31.28.95:8081',
+        //           groupId: 'Dev',
+        //           version: "v${env.BUILD_ID}",
+        //           repository: 'techie-repo',
+        //           credentialsId: 'nexus_login',
+        //           artifacts: [
+        //             [artifactId: 'techie-web',
+        //              classifier: '',
+        //              file: 'spring-boot-app/target/spring-boot-web.jar',
+        //              type: 'jar']
+        //         ]
+        //     )
+        //     }
+        // }
         
         
         stage('Logging into AWS ECR') {
@@ -213,6 +220,28 @@ pipeline {
         }
     }
     }
+        stage('Send jenkins Logs to S3') {
+            steps {
+                script {
+                    def bucketName = 'techie-jenkins-logs'
+                    def s3Folder = 'logs' // You can specify a subfolder in the S3 bucket if needed
+                    
+                
+                    // Upload the captured console log to S3
+                    sh "aws s3 cp /var/lib/jenkins/jobs/${env.JOB_NAME}/builds/${env.BUILD_NUMBER}/log s3://${bucketName}/${s3Folder}/${env.BUILD_NUMBER}/log"
+            
+        }
     }
+}
+
+    }
+    post('Slack Notification') {
+        always {
+            echo 'Sending Slack Notifications.'
+            slackSend channel: '#techie-cicd',
+                color: COLOR_MAP[currentBuild.currentResult],
+                message: "*${currentBuild.currentResult}:* Job ${env.JOB_NAME} build ${env.BUILD_NUMBER} \n More info at: ${env.BUILD_URL}"
+            }
+        }
 }
         
