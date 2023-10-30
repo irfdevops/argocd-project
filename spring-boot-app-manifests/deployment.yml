@@ -18,6 +18,6 @@ spec:
       - name: regcred  # Add this line to reference the 'regcred' secret
       containers:
       - name: spring-boot-app
-        image: 432624721970.dkr.ecr.us-east-1.amazonaws.com/techie:v8
+        image: 432624721970.dkr.ecr.us-east-2.amazonaws.com/techie:v8
         ports:
         - containerPort: 8080
